@@ -1,11 +1,10 @@
-package experimental
+package backoff
 
 import (
 	"math/rand"
+	"sync"
 	"time"
 )
-
-var random = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 // Backoff is a type that returns the next duration to wait before retrying
 // or proceeding with an operation.
@@ -34,19 +33,28 @@ func ExponentialBackoff(initialDelay, maxDelay time.Duration) Backoff {
 	if maxDelay < initialDelay {
 		panic("maxDelay must be greater than initialDelay")
 	}
-	return &exponentialBackoff{initialDelay, maxDelay}
+	return &exponentialBackoff{
+		dur:    initialDelay,
+		max:    maxDelay,
+		random: rand.New(rand.NewSource(time.Now().UnixNano())),
+		mu:     sync.Mutex{},
+	}
 }
 
 type exponentialBackoff struct {
-	dur time.Duration
-	max time.Duration
+	dur    time.Duration
+	max    time.Duration
+	random *rand.Rand
+	mu     sync.Mutex
 }
 
 func (e *exponentialBackoff) Next() time.Duration {
 	next := e.dur
 
 	maxJitter := e.dur / 4
-	randomFactor := time.Duration(random.Intn(int(maxJitter*2+1))) - maxJitter
+	e.mu.Lock()
+	randomFactor := time.Duration(e.random.Intn(int(maxJitter*2+1))) - maxJitter
+	e.mu.Unlock()
 	e.dur = e.dur*2 + randomFactor
 	if e.dur > e.max {
 		e.dur = e.max
@@ -62,15 +70,25 @@ func RandomBackoff(min, max time.Duration) Backoff {
 	if max < min {
 		panic("max must be greater than min")
 	}
-	return &randomBackoff{min, max}
+	return &randomBackoff{
+		min:  min,
+		max:  max,
+		rand: rand.New(rand.NewSource(time.Now().UnixNano())),
+		mu:   sync.Mutex{},
+	}
 }
 
 type randomBackoff struct {
-	min time.Duration
-	max time.Duration
+	min  time.Duration
+	max  time.Duration
+	rand *rand.Rand
+	mu   sync.Mutex
 }
 
-func (r randomBackoff) Next() time.Duration {
+func (r *randomBackoff) Next() time.Duration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	durRange := r.max - r.min
-	return r.min + time.Duration(random.Int63n(int64(durRange)))
+	return r.min + time.Duration(r.rand.Int63n(int64(durRange)))
 }

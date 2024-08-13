@@ -1,4 +1,4 @@
-package experimental
+package backoff
 
 import (
 	"math/rand"
@@ -7,10 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 )
-
-func setup() {
-	random = rand.New(rand.NewSource(42))
-}
 
 func TestConstantBackoff(t *testing.T) {
 	backoff := ConstantBackoff(time.Millisecond * 500)
@@ -22,11 +18,10 @@ func TestConstantBackoff(t *testing.T) {
 }
 
 func TestExponentialBackoff(t *testing.T) {
-	setup()
-
 	initialDelay := time.Second * 1
 	maxDelay := time.Second * 10
 	backoff := ExponentialBackoff(initialDelay, maxDelay)
+	backoff.(*exponentialBackoff).random = rand.New(rand.NewSource(42))
 
 	assert.Equal(t, initialDelay, backoff.Next())
 
@@ -44,11 +39,10 @@ func TestExponentialBackoff(t *testing.T) {
 }
 
 func TestRandomBackoff(t *testing.T) {
-	setup()
-
 	min := time.Second * 1
 	max := time.Second * 10
 	backoff := RandomBackoff(min, max)
+	backoff.(*randomBackoff).rand = rand.New(rand.NewSource(42))
 
 	for i := 0; i < 10; i++ {
 		actual := backoff.Next()
